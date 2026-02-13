@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { program } from 'commander';
+import chalk from 'chalk';
 import {
   initProject,
   showStatus,
@@ -117,6 +118,22 @@ program
   .action(async (featureId, options) => {
     const passed = await verifyFeature(featureId, options);
     process.exit(passed ? 0 : 1);
+  });
+
+// ui-review - UI 美学审查
+program
+  .command('ui-review')
+  .description('Run UI aesthetics review with AI vision capabilities')
+  .option('-b, --base-url <url>', 'Base URL for the application', 'http://localhost:3000')
+  .option('-o, --output <dir>', 'Output directory for screenshots and report', './ui-review')
+  .action(async (options) => {
+    const { runUIReview } = await import('../src/ui-review.js');
+    const result = await runUIReview(options.baseUrl, { outputDir: options.output });
+    if (result.success) {
+      console.log(chalk.green('\n✅ UI Review screenshots captured!'));
+      console.log(chalk.gray(`   Output: ${result.outputDir}`));
+    }
+    process.exit(result.success ? 0 : 1);
   });
 
 program.parse();
