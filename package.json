@@ -4,7 +4,7 @@
   "description": "CLI tool for managing long-running AI agent projects across multiple sessions. Track features, progress, and state persistence.",
   "type": "module",
   "bin": {
-    "lra": "./bin/lra.js"
+    "lra": "bin/lra.js"
   },
   "files": [
     "bin",
