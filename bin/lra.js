@@ -1,0 +1,96 @@
+#!/usr/bin/env node
+
+import { program } from 'commander';
+import {
+  initProject,
+  showStatus,
+  addFeature,
+  getNextFeature,
+  markDone,
+  commitProgress,
+  listFeatures,
+  exportProject
+} from '../src/commands.js';
+
+program
+  .name('lra')
+  .description('Long-Running Agent CLI - Manage complex projects across multiple AI sessions')
+  .version('1.0.0');
+
+// init - 初始化项目
+program
+  .command('init [name]')
+  .description('Initialize a new long-running agent project')
+  .option('-t, --type <type>', 'Project type (web, api, cli, library)', 'web')
+  .option('-d, --dir <directory>', 'Target directory', '.')
+  .action(async (name, options) => {
+    await initProject(name, options);
+  });
+
+// status - 显示状态
+program
+  .command('status')
+  .description('Show project status and progress')
+  .option('-j, --json', 'Output as JSON')
+  .action(async (options) => {
+    await showStatus(options);
+  });
+
+// add - 添加功能
+program
+  .command('add <description>')
+  .description('Add a new feature to the project')
+  .option('-p, --priority <priority>', 'Priority (critical, high, medium, low)', 'medium')
+  .option('-c, --category <category>', 'Category (functional, style, performance, security)', 'functional')
+  .option('-s, --steps <steps...>', 'Test steps')
+  .action(async (description, options) => {
+    await addFeature(description, options);
+  });
+
+// next - 获取下一个功能
+program
+  .command('next')
+  .description('Get the next pending feature to work on')
+  .option('-j, --json', 'Output as JSON')
+  .action(async (options) => {
+    await getNextFeature(options);
+  });
+
+// done - 标记完成
+program
+  .command('done <feature-id>')
+  .description('Mark a feature as completed')
+  .option('-n, --notes <notes>', 'Notes about the completion')
+  .action(async (featureId, options) => {
+    await markDone(featureId, options);
+  });
+
+// commit - 提交进度
+program
+  .command('commit [feature-id]')
+  .description('Commit progress to git')
+  .option('-m, --message <message>', 'Commit message')
+  .action(async (featureId, options) => {
+    await commitProgress(featureId, options);
+  });
+
+// list - 列出功能
+program
+  .command('list')
+  .description('List all features')
+  .option('-f, --filter <filter>', 'Filter by status (pending, done, all)', 'all')
+  .option('-p, --priority <priority>', 'Filter by priority')
+  .action(async (options) => {
+    await listFeatures(options);
+  });
+
+// export - 导出
+program
+  .command('export')
+  .description('Export project state')
+  .option('-o, --output <file>', 'Output file')
+  .action(async (options) => {
+    await exportProject(options);
+  });
+
+program.parse();
