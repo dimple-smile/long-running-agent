@@ -48,6 +48,9 @@
     "conf": "^12.0.0",
     "ora": "^8.0.0"
   },
+  "peerDependencies": {
+    "agent-browser": ">=0.1.0"
+  },
   "devDependencies": {},
   "publishConfig": {
     "access": "public"

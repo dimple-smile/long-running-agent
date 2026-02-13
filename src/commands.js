@@ -488,6 +488,160 @@ export async function exportProject(options) {
 }
 
 /**
+ * 运行 E2E 测试
+ */
+export async function runTest(featureId, options) {
+  if (!await checkProject()) {
+    console.log(chalk.red('❌ Not an LRA project'));
+    process.exit(1);
+  }
+
+  // 动态导入 E2E 模块
+  const { runFeatureTest, runAllTests } = await import('./e2e.js');
+
+  const data = await readFeatures();
+  const baseUrl = options.baseUrl || 'http://localhost:3000';
+
+  if (options.all) {
+    // 运行所有已完成功能的测试
+    const completedFeatures = data.features.filter(f => f.passes);
+    if (completedFeatures.length === 0) {
+      console.log(chalk.yellow('⚠️  No completed features to test'));
+      return;
+    }
+
+    const results = await runAllTests(completedFeatures, {
+      baseUrl,
+      headless: options.headless !== false
+    });
+
+    // 更新功能状态
+    for (const result of results.results) {
+      const feature = data.features.find(f => f.id === result.featureId);
+      if (feature) {
+        feature.testResult = result.passed ? 'passed' : 'failed';
+        feature.lastTestAt = new Date().toISOString();
+      }
+    }
+    await writeFeatures(data);
+
+    return results.failed === 0;
+  }
+
+  if (featureId) {
+    // 测试单个功能
+    const feature = data.features.find(f => f.id === featureId);
+    if (!feature) {
+      console.log(chalk.red(`❌ Feature ${featureId} not found`));
+      process.exit(1);
+    }
+
+    const result = await runFeatureTest(feature, {
+      baseUrl,
+      headless: options.headless !== false
+    });
+
+    // 更新功能状态
+    feature.testResult = result.passed ? 'passed' : 'failed';
+    feature.lastTestAt = new Date().toISOString();
+    if (!result.passed) {
+      feature.testError = result.error;
+    }
+    await writeFeatures(data);
+
+    return result.passed;
+  }
+
+  // 没有指定功能，测试下一个待处理功能
+  const next = getNextPendingFeature(data.features);
+  if (!next) {
+    console.log(chalk.green('🎉 All features completed!'));
+    return true;
+  }
+
+  console.log(chalk.cyan(`Testing next feature: ${next.id}`));
+  const result = await runFeatureTest(next, {
+    baseUrl,
+    headless: options.headless !== false
+  });
+
+  next.testResult = result.passed ? 'passed' : 'failed';
+  next.lastTestAt = new Date().toISOString();
+  await writeFeatures(data);
+
+  return result.passed;
+}
+
+/**
+ * 验证功能（测试 + 标记完成）
+ */
+export async function verifyFeature(featureId, options) {
+  if (!await checkProject()) {
+    console.log(chalk.red('❌ Not an LRA project'));
+    process.exit(1);
+  }
+
+  const { runFeatureTest } = await import('./e2e.js');
+
+  const data = await readFeatures();
+  const baseUrl = options.baseUrl || 'http://localhost:3000';
+
+  const feature = data.features.find(f => f.id === featureId);
+  if (!feature) {
+    console.log(chalk.red(`❌ Feature ${featureId} not found`));
+    process.exit(1);
+  }
+
+  console.log(chalk.bold(`\n🔍 Verifying: ${chalk.cyan(featureId)} - ${feature.description}\n`));
+
+  // 运行测试
+  const result = await runFeatureTest(feature, {
+    baseUrl,
+    headless: options.headless !== false
+  });
+
+  if (result.passed) {
+    // 测试通过，标记完成
+    feature.passes = true;
+    feature.status = 'completed';
+    feature.completed_at = new Date().toISOString();
+    feature.attempts++;
+    feature.testResult = 'passed';
+    feature.lastTestAt = new Date().toISOString();
+
+    if (options.notes) {
+      feature.notes = options.notes;
+    }
+
+    await writeFeatures(data);
+
+    console.log();
+    console.log(chalk.green(`✅ Feature ${featureId} verified and marked as completed!`));
+    console.log(`📊 Progress: ${data.metadata.completed_features}/${data.metadata.total_features} (${data.metadata.completion_percentage}%)`);
+
+    return true;
+  } else {
+    // 测试失败
+    feature.testResult = 'failed';
+    feature.lastTestAt = new Date().toISOString();
+    feature.testError = result.error;
+    feature.attempts++;
+
+    await writeFeatures(data);
+
+    console.log();
+    console.log(chalk.red(`❌ Feature ${featureId} verification failed!`));
+    console.log(chalk.red(`   Error: ${result.error}`));
+
+    if (result.screenshots && result.screenshots.length > 0) {
+      console.log(chalk.gray(`   Screenshot saved: ${result.screenshots.join(', ')}`));
+    }
+
+    return false;
+  }
+}
+
+/**
  * 生成 init.sh
  */
 function generateInitScript(projectType) {

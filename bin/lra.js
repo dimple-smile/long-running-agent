@@ -9,7 +9,9 @@ import {
   markDone,
   commitProgress,
   listFeatures,
-  exportProject
+  exportProject,
+  runTest,
+  verifyFeature
 } from '../src/commands.js';
 
 program
@@ -91,6 +93,30 @@ program
   .option('-o, --output <file>', 'Output file')
   .action(async (options) => {
     await exportProject(options);
+  });
+
+// test - 运行 E2E 测试
+program
+  .command('test [feature-id]')
+  .description('Run E2E tests using Playwright')
+  .option('-a, --all', 'Test all completed features')
+  .option('-b, --base-url <url>', 'Base URL for testing', 'http://localhost:3000')
+  .option('--no-headless', 'Run browser in visible mode')
+  .action(async (featureId, options) => {
+    const passed = await runTest(featureId, options);
+    process.exit(passed ? 0 : 1);
+  });
+
+// verify - 验证功能（测试 + 标记完成）
+program
+  .command('verify <feature-id>')
+  .description('Verify a feature with E2E test and mark as completed if passed')
+  .option('-b, --base-url <url>', 'Base URL for testing', 'http://localhost:3000')
+  .option('--no-headless', 'Run browser in visible mode')
+  .option('-n, --notes <notes>', 'Notes about the completion')
+  .action(async (featureId, options) => {
+    const passed = await verifyFeature(featureId, options);
+    process.exit(passed ? 0 : 1);
   });
 
 program.parse();
