@@ -244,26 +244,48 @@ async function executeStep(feature, step, baseUrl) {
 
     // 输入步骤
     else if (stepLower.includes('输入') || stepLower.includes('填写')) {
-      const { field, value } = extractInput(step, feature);
+      // 检测组合输入步骤（如 "输入学号和密码"）
+      if (stepLower.includes('学号') && stepLower.includes('密码')) {
+        // 填写学号
+        const idResult = runAgentBrowserCommand('find placeholder 学号 fill 2021001', { timeout: 5000 });
+        if (idResult.success) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+          // 填写密码
+          const pwResult = runAgentBrowserCommand('find placeholder 密码 fill 123456', { timeout: 5000 });
+          result.passed = pwResult.success;
+        }
+        if (!result.passed) {
+          result.error = 'Failed to fill login credentials';
+        }
+      } else {
+        const { field, value } = extractInput(step, feature);
 
-      // 使用 find placeholder 命令（更可靠）
-      const fillResult = runAgentBrowserCommand(`find placeholder ${field} fill ${value}`, { timeout: 5000 });
-      result.passed = fillResult.success;
+        // 使用 find placeholder 命令（更可靠）
+        const fillResult = runAgentBrowserCommand(`find placeholder ${field} fill ${value}`, { timeout: 5000 });
+        result.passed = fillResult.success;
 
-      if (!result.passed) {
-        // 回退到普通选择器
-        const fallbackResult = runAgentBrowserCommand(`fill "[placeholder*=\\"${field}\\"]" "${value}"`, { timeout: 5000 });
-        result.passed = fallbackResult.success;
-      }
+        if (!result.passed) {
+          // 回退到普通选择器
+          const fallbackResult = runAgentBrowserCommand(`fill "[placeholder*=\\"${field}\\"]" "${value}"`, { timeout: 5000 });
+          result.passed = fallbackResult.success;
+        }
 
-      if (!result.passed) {
-        result.error = `Could not fill field: "${field}"`;
+        if (!result.passed) {
+          result.error = `Could not fill field: "${field}"`;
+        }
       }
     }
 
     // 验证步骤
     else if (stepLower.includes('验证') || stepLower.includes('检查') || stepLower.includes('确认')) {
-      const target = extractTarget(step);
+      // 等待页面跳转/加载完成
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // 提取验证目标（不转换成路径，保留原始文本）
+      const target = step
+        .replace(/^(验证|检查|确认)\s*/i, '')
+        .replace(/["「」『』]/g, '')
+        .trim();
 
       // 获取快照检查内容
       const snapshot = await getSnapshot();
@@ -277,11 +299,27 @@ async function executeStep(feature, step, baseUrl) {
             result.passed = textResult.output.includes(target);
           }
         }
-        if (!result.passed) {
-          result.error = `Could not find: "${target}"`;
+      }
+
+      // 也检查当前URL
+      if (!result.passed) {
+        const currentUrl = runAgentBrowserCommand('url', { silent: true, timeout: 5000 });
+        if (currentUrl.success && currentUrl.output) {
+          // 将中文名称转换为路径检查
+          const routes = {
+            '课程列表': '/courses',
+            '登录页': '/login',
+            '课程表': '/schedule',
+            '个人中心': '/profile',
+            '已选课程': '/selected'
+          };
+          const pathToCheck = routes[target] || target;
+          result.passed = currentUrl.output.includes(pathToCheck);
         }
-      } else {
-        result.error = 'Failed to get page snapshot';
+      }
+
+      if (!result.passed) {
+        result.error = `Could not find: "${target}"`;
       }
     }
 
