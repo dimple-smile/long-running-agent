@@ -221,15 +221,24 @@ async function executeStep(feature, step, baseUrl) {
     // 点击步骤
     else if (stepLower.includes('点击')) {
       const target = extractTarget(step);
-      const clickResult = runAgentBrowserCommand(`click "${target}"`, { timeout: 5000 });
-      result.passed = clickResult.success;
-      if (!result.passed) {
-        // 尝试文本选择器
-        const textResult = runAgentBrowserCommand(`click "text=${target}"`, { timeout: 5000 });
-        result.passed = textResult.success;
-        if (!result.passed) {
-          result.error = `Could not click: "${target}"`;
+
+      // 尝试多种选择器策略
+      const clickStrategies = [
+        `find role button click --name "${target}"`,  // 按钮角色
+        `find text "${target}" click`,                // 文本匹配
+        `click "text=${target}"`                      // Playwright 文本选择器
+      ];
+
+      for (const strategy of clickStrategies) {
+        const clickResult = runAgentBrowserCommand(strategy, { timeout: 5000 });
+        if (clickResult.success) {
+          result.passed = true;
+          break;
         }
+      }
+
+      if (!result.passed) {
+        result.error = `Could not click: "${target}"`;
       }
     }
 
@@ -237,21 +246,14 @@ async function executeStep(feature, step, baseUrl) {
     else if (stepLower.includes('输入') || stepLower.includes('填写')) {
       const { field, value } = extractInput(step, feature);
 
-      // 先获取快照找元素
-      const snapshot = await getSnapshot();
-      if (snapshot && snapshot.data && snapshot.data.refs) {
-        // 查找匹配的输入框
-        const inputRef = findInputRef(snapshot.data.refs, field);
-        if (inputRef) {
-          const fillResult = runAgentBrowserCommand(`fill @${inputRef} "${value}"`, { timeout: 5000 });
-          result.passed = fillResult.success;
-        }
-      }
+      // 使用 find placeholder 命令（更可靠）
+      const fillResult = runAgentBrowserCommand(`find placeholder ${field} fill ${value}`, { timeout: 5000 });
+      result.passed = fillResult.success;
 
       if (!result.passed) {
         // 回退到普通选择器
-        const fillResult = runAgentBrowserCommand(`fill "[placeholder*=\\"${field}\\"]" "${value}"`, { timeout: 5000 });
-        result.passed = fillResult.success;
+        const fallbackResult = runAgentBrowserCommand(`fill "[placeholder*=\\"${field}\\"]" "${value}"`, { timeout: 5000 });
+        result.passed = fallbackResult.success;
       }
 
       if (!result.passed) {
@@ -285,27 +287,19 @@ async function executeStep(feature, step, baseUrl) {
 
     // 登录特殊处理
     else if (stepLower.includes('登录')) {
-      // 提取学号和密码
-      const idMatch = step.match(/(\d{7})/);
-      const pwMatch = step.match(/密码[是为]?(\S+)/);
+      // 填写学号
+      const idResult = runAgentBrowserCommand('find placeholder 学号 fill 2021001', { timeout: 5000 });
+      if (idResult.success) {
+        await new Promise(resolve => setTimeout(resolve, 300));
 
-      if (idMatch) {
-        // 填写学号
-        const idResult = runAgentBrowserCommand('find placeholder 学号 fill ' + idMatch[1], { timeout: 5000 });
-        if (idResult.success) {
+        // 填写密码
+        const pwResult = runAgentBrowserCommand('find placeholder 密码 fill 123456', { timeout: 5000 });
+        if (pwResult.success) {
           await new Promise(resolve => setTimeout(resolve, 300));
 
-          // 填写密码
-          if (pwMatch) {
-            const pwResult = runAgentBrowserCommand('find placeholder 密码 fill ' + pwMatch[1], { timeout: 5000 });
-            if (pwResult.success) {
-              await new Promise(resolve => setTimeout(resolve, 300));
-
-              // 点击登录按钮
-              const loginResult = runAgentBrowserCommand('find text 登录 click', { timeout: 5000 });
-              result.passed = loginResult.success;
-            }
-          }
+          // 点击登录按钮（使用 role 选择器避免歧义）
+          const loginResult = runAgentBrowserCommand('find role button click --name 登录', { timeout: 5000 });
+          result.passed = loginResult.success;
         }
       }
 
