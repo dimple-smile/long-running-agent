@@ -23,10 +23,83 @@ const AGENT_DIR = '.agent';
 const FEATURES_FILE = `${AGENT_DIR}/features.json`;
 const PROGRESS_FILE = `${AGENT_DIR}/progress.md`;
 
+// 类型定义
+export interface Feature {
+  id: string;
+  category: string;
+  priority: 'critical' | 'high' | 'medium' | 'low';
+  description: string;
+  steps: string[];
+  acceptance_criteria: string[];
+  dependencies: string[];
+  status: 'pending' | 'in_progress' | 'completed';
+  passes: boolean;
+  attempts: number;
+  notes: string;
+  completed_at?: string;
+  testResult?: 'passed' | 'failed';
+  lastTestAt?: string;
+  testError?: string;
+}
+
+export interface FeaturesData {
+  version: string;
+  project_id: string;
+  project_name: string;
+  project_type: string;
+  created_at: string;
+  updated_at: string;
+  features: Feature[];
+  metadata: {
+    total_features: number;
+    completed_features: number;
+    completion_percentage: number;
+    by_priority: Record<string, { total: number; completed: number }>;
+    by_category: Record<string, { total: number; completed: number }>;
+  };
+  sessions: string[];
+}
+
+export interface InitOptions {
+  type: string;
+  dir: string;
+}
+
+export interface StatusOptions {
+  json?: boolean;
+}
+
+export interface AddOptions {
+  priority?: string;
+  category?: string;
+  steps?: string[];
+}
+
+export interface NextOptions {
+  json?: boolean;
+}
+
+export interface DoneOptions {
+  notes?: string;
+}
+
+export interface CommitOptions {
+  message?: string;
+}
+
+export interface ListOptions {
+  filter?: string;
+  priority?: string;
+}
+
+export interface ExportOptions {
+  output?: string;
+}
+
 /**
  * 检查是否在项目目录中
  */
-async function checkProject() {
+async function checkProject(): Promise<boolean> {
   try {
     await fs.access(FEATURES_FILE);
     return true;
@@ -38,7 +111,7 @@ async function checkProject() {
 /**
  * 读取 features.json
  */
-async function readFeatures() {
+async function readFeatures(): Promise<FeaturesData | null> {
   try {
     const content = await fs.readFile(FEATURES_FILE, 'utf-8');
     return JSON.parse(content);
@@ -50,7 +123,7 @@ async function readFeatures() {
 /**
  * 写入 features.json
  */
-async function writeFeatures(data) {
+async function writeFeatures(data: FeaturesData): Promise<void> {
   data.updated_at = new Date().toISOString();
   data.metadata = updateMetadata(data.features);
   await fs.writeFile(FEATURES_FILE, JSON.stringify(data, null, 2));
@@ -59,12 +132,12 @@ async function writeFeatures(data) {
 /**
  * 更新元数据
  */
-function updateMetadata(features) {
+function updateMetadata(features: Feature[]): FeaturesData['metadata'] {
   const total = features.length;
   const completed = features.filter(f => f.passes).length;
 
-  const byPriority = {};
-  const byCategory = {};
+  const byPriority: Record<string, { total: number; completed: number }> = {};
+  const byCategory: Record<string, { total: number; completed: number }> = {};
 
   for (const f of features) {
     // 按优先级
@@ -92,7 +165,7 @@ function updateMetadata(features) {
 /**
  * 初始化项目
  */
-export async function initProject(name, options) {
+export async function initProject(name: string | undefined, options: InitOptions): Promise<void> {
   const targetDir = options.dir;
   const projectType = options.type;
   const projectName = name || path.basename(path.resolve(targetDir));
@@ -104,7 +177,7 @@ export async function initProject(name, options) {
     await fs.mkdir(path.join(targetDir, AGENT_DIR, 'sessions'), { recursive: true });
 
     // 创建 features.json
-    const features = {
+    const features: FeaturesData = {
       version: '1.0',
       project_id: projectName.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
       project_name: projectName,
@@ -218,7 +291,7 @@ _暂无_
 
   } catch (error) {
     spinner.fail('Failed to initialize project');
-    console.error(chalk.red(error.message));
+    console.error(chalk.red((error as Error).message));
     process.exit(1);
   }
 }
@@ -226,7 +299,7 @@ _暂无_
 /**
  * 显示状态
  */
-export async function showStatus(options) {
+export async function showStatus(options: StatusOptions): Promise<void> {
   if (!await checkProject()) {
     console.log(chalk.red('❌ Not an LRA project'));
     console.log('   Run: npx @dimples/lra init');
@@ -273,7 +346,7 @@ export async function showStatus(options) {
     const color = priority === 'critical' ? chalk.red :
                   priority === 'high' ? chalk.yellow :
                   priority === 'medium' ? chalk.blue : chalk.gray;
-    console.log(`   ${color(priority)}: ${stats.completed}/${stats.total}`);
+    console.log(`   ${color(priority)}: ${(stats as { total: number; completed: number }).completed}/${(stats as { total: number; completed: number }).total}`);
   }
   console.log();
 }
@@ -281,20 +354,24 @@ export async function showStatus(options) {
 /**
  * 添加功能
  */
-export async function addFeature(description, options) {
+export async function addFeature(description: string, options: AddOptions): Promise<void> {
   if (!await checkProject()) {
     console.log(chalk.red('❌ Not an LRA project'));
     process.exit(1);
   }
 
   const data = await readFeatures();
+  if (!data) {
+    console.log(chalk.red('❌ Cannot read features.json'));
+    process.exit(1);
+  }
 
   const newId = `feat-${String(data.features.length + 1).padStart(3, '0')}`;
 
-  const feature = {
+  const feature: Feature = {
     id: newId,
     category: options.category || 'functional',
-    priority: options.priority || 'medium',
+    priority: (options.priority as Feature['priority']) || 'medium',
     description: description,
     steps: options.steps || [],
     acceptance_criteria: [],
@@ -314,13 +391,18 @@ export async function addFeature(description, options) {
 /**
  * 获取下一个功能
  */
-export async function getNextFeature(options) {
+export async function getNextFeature(options: NextOptions): Promise<void> {
   if (!await checkProject()) {
     console.log(chalk.red('❌ Not an LRA project'));
     process.exit(1);
   }
 
   const data = await readFeatures();
+  if (!data) {
+    console.log(chalk.red('❌ Cannot read features.json'));
+    process.exit(1);
+  }
+
   const next = getNextPendingFeature(data.features);
 
   if (!next) {
@@ -345,8 +427,8 @@ export async function getNextFeature(options) {
   }
 }
 
-function getNextPendingFeature(features) {
-  const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+function getNextPendingFeature(features: Feature[]): Feature | null {
+  const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
   const pending = features.filter(f => !f.passes);
   if (pending.length === 0) return null;
 
@@ -363,13 +445,18 @@ function getNextPendingFeature(features) {
 /**
  * 标记完成
  */
-export async function markDone(featureId, options) {
+export async function markDone(featureId: string, options: DoneOptions): Promise<void> {
   if (!await checkProject()) {
     console.log(chalk.red('❌ Not an LRA project'));
     process.exit(1);
   }
 
   const data = await readFeatures();
+  if (!data) {
+    console.log(chalk.red('❌ Cannot read features.json'));
+    process.exit(1);
+  }
+
   const feature = data.features.find(f => f.id === featureId);
 
   if (!feature) {
@@ -394,7 +481,7 @@ export async function markDone(featureId, options) {
 /**
  * 提交进度
  */
-export async function commitProgress(featureId, options) {
+export async function commitProgress(featureId: string | undefined, options: CommitOptions): Promise<void> {
   if (!await checkProject()) {
     console.log(chalk.red('❌ Not an LRA project'));
     process.exit(1);
@@ -412,9 +499,11 @@ export async function commitProgress(featureId, options) {
   let message = options.message;
   if (!message && featureId) {
     const data = await readFeatures();
-    const feature = data.features.find(f => f.id === featureId);
-    if (feature) {
-      message = `feat: ${feature.description}`;
+    if (data) {
+      const feature = data.features.find(f => f.id === featureId);
+      if (feature) {
+        message = `feat: ${feature.description}`;
+      }
     }
   }
   if (!message) {
@@ -428,8 +517,10 @@ export async function commitProgress(featureId, options) {
 
     // 显示进度
     const data = await readFeatures();
-    console.log(`📊 Progress: ${data.metadata.completed_features}/${data.metadata.total_features} (${data.metadata.completion_percentage}%)`);
-  } catch (error) {
+    if (data) {
+      console.log(`📊 Progress: ${data.metadata.completed_features}/${data.metadata.total_features} (${data.metadata.completion_percentage}%)`);
+    }
+  } catch {
     console.log(chalk.yellow('⚠️  Nothing to commit'));
   }
 }
@@ -437,13 +528,18 @@ export async function commitProgress(featureId, options) {
 /**
  * 列出功能
  */
-export async function listFeatures(options) {
+export async function listFeatures(options: ListOptions): Promise<void> {
   if (!await checkProject()) {
     console.log(chalk.red('❌ Not an LRA project'));
     process.exit(1);
   }
 
   const data = await readFeatures();
+  if (!data) {
+    console.log(chalk.red('❌ Cannot read features.json'));
+    process.exit(1);
+  }
+
   let features = data.features;
 
   // 过滤
@@ -474,13 +570,18 @@ export async function listFeatures(options) {
 /**
  * 导出项目
  */
-export async function exportProject(options) {
+export async function exportProject(options: ExportOptions): Promise<void> {
   if (!await checkProject()) {
     console.log(chalk.red('❌ Not an LRA project'));
     process.exit(1);
   }
 
   const data = await readFeatures();
+  if (!data) {
+    console.log(chalk.red('❌ Cannot read features.json'));
+    process.exit(1);
+  }
+
   const outputFile = options.output || `export-${Date.now()}.json`;
 
   await fs.writeFile(outputFile, JSON.stringify(data, null, 2));
@@ -488,163 +589,9 @@ export async function exportProject(options) {
 }
 
 /**
- * 运行 E2E 测试
- */
-export async function runTest(featureId, options) {
-  if (!await checkProject()) {
-    console.log(chalk.red('❌ Not an LRA project'));
-    process.exit(1);
-  }
-
-  // 动态导入 E2E 模块
-  const { runFeatureTest, runAllTests } = await import('./e2e.js');
-
-  const data = await readFeatures();
-  const baseUrl = options.baseUrl || 'http://localhost:3000';
-
-  if (options.all) {
-    // 运行所有已完成功能的测试
-    const completedFeatures = data.features.filter(f => f.passes);
-    if (completedFeatures.length === 0) {
-      console.log(chalk.yellow('⚠️  No completed features to test'));
-      return;
-    }
-
-    const results = await runAllTests(completedFeatures, {
-      baseUrl,
-      headless: options.headless === true
-    });
-
-    // 更新功能状态
-    for (const result of results.results) {
-      const feature = data.features.find(f => f.id === result.featureId);
-      if (feature) {
-        feature.testResult = result.passed ? 'passed' : 'failed';
-        feature.lastTestAt = new Date().toISOString();
-      }
-    }
-    await writeFeatures(data);
-
-    return results.failed === 0;
-  }
-
-  if (featureId) {
-    // 测试单个功能
-    const feature = data.features.find(f => f.id === featureId);
-    if (!feature) {
-      console.log(chalk.red(`❌ Feature ${featureId} not found`));
-      process.exit(1);
-    }
-
-    const result = await runFeatureTest(feature, {
-      baseUrl,
-      headless: options.headless === true
-    });
-
-    // 更新功能状态
-    feature.testResult = result.passed ? 'passed' : 'failed';
-    feature.lastTestAt = new Date().toISOString();
-    if (!result.passed) {
-      feature.testError = result.error;
-    }
-    await writeFeatures(data);
-
-    return result.passed;
-  }
-
-  // 没有指定功能，测试下一个待处理功能
-  const next = getNextPendingFeature(data.features);
-  if (!next) {
-    console.log(chalk.green('🎉 All features completed!'));
-    return true;
-  }
-
-  console.log(chalk.cyan(`Testing next feature: ${next.id}`));
-  const result = await runFeatureTest(next, {
-    baseUrl,
-    headless: options.headless !== false
-  });
-
-  next.testResult = result.passed ? 'passed' : 'failed';
-  next.lastTestAt = new Date().toISOString();
-  await writeFeatures(data);
-
-  return result.passed;
-}
-
-/**
- * 验证功能（测试 + 标记完成）
- */
-export async function verifyFeature(featureId, options) {
-  if (!await checkProject()) {
-    console.log(chalk.red('❌ Not an LRA project'));
-    process.exit(1);
-  }
-
-  const { runFeatureTest } = await import('./e2e.js');
-
-  const data = await readFeatures();
-  const baseUrl = options.baseUrl || 'http://localhost:3000';
-
-  const feature = data.features.find(f => f.id === featureId);
-  if (!feature) {
-    console.log(chalk.red(`❌ Feature ${featureId} not found`));
-    process.exit(1);
-  }
-
-  console.log(chalk.bold(`\n🔍 Verifying: ${chalk.cyan(featureId)} - ${feature.description}\n`));
-
-  // 运行测试
-  const result = await runFeatureTest(feature, {
-    baseUrl,
-    headless: options.headless === true
-  });
-
-  if (result.passed) {
-    // 测试通过，标记完成
-    feature.passes = true;
-    feature.status = 'completed';
-    feature.completed_at = new Date().toISOString();
-    feature.attempts++;
-    feature.testResult = 'passed';
-    feature.lastTestAt = new Date().toISOString();
-
-    if (options.notes) {
-      feature.notes = options.notes;
-    }
-
-    await writeFeatures(data);
-
-    console.log();
-    console.log(chalk.green(`✅ Feature ${featureId} verified and marked as completed!`));
-    console.log(`📊 Progress: ${data.metadata.completed_features}/${data.metadata.total_features} (${data.metadata.completion_percentage}%)`);
-
-    return true;
-  } else {
-    // 测试失败
-    feature.testResult = 'failed';
-    feature.lastTestAt = new Date().toISOString();
-    feature.testError = result.error;
-    feature.attempts++;
-
-    await writeFeatures(data);
-
-    console.log();
-    console.log(chalk.red(`❌ Feature ${featureId} verification failed!`));
-    console.log(chalk.red(`   Error: ${result.error}`));
-
-    if (result.screenshots && result.screenshots.length > 0) {
-      console.log(chalk.gray(`   Screenshot saved: ${result.screenshots.join(', ')}`));
-    }
-
-    return false;
-  }
-}
-
-/**
  * 生成 init.sh
  */
-function generateInitScript(projectType) {
+function generateInitScript(projectType: string): string {
   switch (projectType) {
     case 'web':
       return `#!/bin/bash
@@ -691,7 +638,7 @@ echo "Please customize this script for your project."
 /**
  * 生成 .claude/CLAUDE.md
  */
-function generateClaudeMd(projectName) {
+function generateClaudeMd(projectName: string): string {
   return `# ${projectName} - Claude Code 项目指令
 
 本文件指导 Claude Code 如何在这个长运行项目中工作。
@@ -765,8 +712,8 @@ npx @dimples/lra status
 ## 会话结束检查
 
 - [ ] 当前功能已测试通过
-- [ ] \`npx long-running-agent done\` 已执行
-- [ ] \`npx long-running-agent commit\` 已执行
+- [ ] \`npx @dimples/lra done\` 已执行
+- [ ] \`npx @dimples/lra commit\` 已执行
 - [ ] \`git status\` 干净
 
 ## 相关链接

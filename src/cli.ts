@@ -10,10 +10,8 @@ import {
   markDone,
   commitProgress,
   listFeatures,
-  exportProject,
-  runTest,
-  verifyFeature
-} from '../src/commands.js';
+  exportProject
+} from './commands.js';
 
 program
   .name('lra')
@@ -94,46 +92,6 @@ program
   .option('-o, --output <file>', 'Output file')
   .action(async (options) => {
     await exportProject(options);
-  });
-
-// test - 运行 E2E 测试
-program
-  .command('test [feature-id]')
-  .description('Run E2E tests using agent-browser')
-  .option('-a, --all', 'Test all completed features')
-  .option('-b, --base-url <url>', 'Base URL for testing', 'http://localhost:3000')
-  .option('--headless', 'Run browser in headless mode (no visible window)')
-  .action(async (featureId, options) => {
-    const passed = await runTest(featureId, options);
-    process.exit(passed ? 0 : 1);
-  });
-
-// verify - 验证功能（测试 + 标记完成）
-program
-  .command('verify <feature-id>')
-  .description('Verify a feature with E2E test and mark as completed if passed')
-  .option('-b, --base-url <url>', 'Base URL for testing', 'http://localhost:3000')
-  .option('--headless', 'Run browser in headless mode (no visible window)')
-  .option('-n, --notes <notes>', 'Notes about the completion')
-  .action(async (featureId, options) => {
-    const passed = await verifyFeature(featureId, options);
-    process.exit(passed ? 0 : 1);
-  });
-
-// ui-review - UI 美学审查
-program
-  .command('ui-review')
-  .description('Run UI aesthetics review with AI vision capabilities')
-  .option('-b, --base-url <url>', 'Base URL for the application', 'http://localhost:3000')
-  .option('-o, --output <dir>', 'Output directory for screenshots and report', './ui-review')
-  .action(async (options) => {
-    const { runUIReview } = await import('../src/ui-review.js');
-    const result = await runUIReview(options.baseUrl, { outputDir: options.output });
-    if (result.success) {
-      console.log(chalk.green('\n✅ UI Review screenshots captured!'));
-      console.log(chalk.gray(`   Output: ${result.outputDir}`));
-    }
-    process.exit(result.success ? 0 : 1);
   });
 
 program.parse();
