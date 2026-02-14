@@ -1,11 +1,16 @@
 /**
  * E2E Testing Module for Long-Running Agent
- * Uses agent-browser (https://github.com/vercel-labs/agent-browser)
+ *
+ * 这是一个通用的E2E测试框架，不包含任何业务逻辑。
+ * 它读取features.json中的测试步骤，然后调用AI来理解和执行这些步骤。
+ *
+ * AI会根据 skills/agent-browser.md 文档来生成具体的agent-browser命令。
  */
 
-import { execSync, spawn } from 'child_process';
+import { execSync } from 'child_process';
 import chalk from 'chalk';
 import fs from 'fs';
+import path from 'path';
 
 /**
  * 检查 agent-browser 是否已安装
@@ -86,7 +91,42 @@ async function getSnapshot() {
 }
 
 /**
+ * 获取 agent-browser skill 文档内容
+ * 这个文档告诉AI如何使用agent-browser
+ */
+function getAgentBrowserSkillContent() {
+  const skillPath = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'skills', 'agent-browser.md');
+  try {
+    return fs.readFileSync(skillPath, 'utf-8');
+  } catch {
+    return `
+# Agent Browser 基本命令
+
+- 打开URL: agent-browser open <url> [--headed]
+- 截图: agent-browser screenshot <file.png>
+- 关闭: agent-browser close
+- 获取快照: agent-browser snapshot --json
+- 获取URL: agent-browser url
+- 获取文本: agent-browser get text body
+
+## 元素操作
+- 通过placeholder查找: agent-browser find placeholder <text> fill <value>
+- 通过role查找按钮: agent-browser find role button click --name <name>
+- 通过文本查找: agent-browser find text <text> click
+`;
+  }
+}
+
+/**
  * 运行单个功能的 E2E 测试
+ *
+ * 这个函数是通用的，不包含任何业务逻辑。
+ * 它只是：
+ * 1. 打开浏览器
+ * 2. 返回测试步骤供AI理解和执行
+ * 3. 关闭浏览器
+ *
+ * 具体的测试执行应该由AI根据agent-browser skill文档来完成。
  */
 export async function runFeatureTest(feature, options = {}) {
   const baseUrl = options.baseUrl || 'http://localhost:3000';
@@ -115,10 +155,17 @@ export async function runFeatureTest(feature, options = {}) {
   const results = {
     featureId: feature.id,
     description: feature.description,
-    steps: [],
-    passed: true,
+    steps: feature.steps || [],
+    passed: false,
     error: null,
-    screenshots: []
+    screenshots: [],
+    // 返回执行测试所需的信息，供AI使用
+    testInfo: {
+      baseUrl,
+      headless,
+      feature,
+      agentBrowserSkill: getAgentBrowserSkillContent()
+    }
   };
 
   try {
@@ -140,294 +187,100 @@ export async function runFeatureTest(feature, options = {}) {
     // 等待页面加载
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // 如果有测试步骤，按步骤执行
+    // 返回测试信息，让AI来执行具体步骤
+    console.log(chalk.cyan('\n📋 Test steps to execute:'));
     if (feature.steps && feature.steps.length > 0) {
-      for (let i = 0; i < feature.steps.length; i++) {
-        const step = feature.steps[i];
-        console.log(chalk.gray(`   Step ${i + 1}: ${step}`));
-
-        const stepResult = await executeStep(feature, step, baseUrl);
-
-        results.steps.push({
-          step: step,
-          passed: stepResult.passed,
-          error: stepResult.error
-        });
-
-        if (!stepResult.passed) {
-          results.passed = false;
-          results.error = `Step ${i + 1} failed: ${stepResult.error}`;
-
-          // 截图
-          const screenshot = `test-failure-${feature.id}-${Date.now()}.png`;
-          runAgentBrowserCommand(`screenshot ${screenshot}`, { silent: true });
-          results.screenshots.push(screenshot);
-
-          console.log(chalk.red(`   ❌ Failed: ${stepResult.error}`));
-          break;
-        } else {
-          console.log(chalk.green(`   ✅ Passed`));
-        }
-
-        // 步骤之间稍微等待
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
+      feature.steps.forEach((step, i) => {
+        console.log(chalk.gray(`   ${i + 1}. ${step}`));
+      });
     } else {
-      // 通用验证
-      console.log(chalk.yellow('   ⚠️  No test steps defined, running generic validation...'));
-
-      // 获取快照验证页面加载
-      const snapshot = await getSnapshot();
-      if (snapshot && snapshot.success) {
-        console.log(chalk.green('   ✅ Page loaded successfully'));
-        results.passed = true;
-      } else {
-        results.passed = false;
-        results.error = 'Page failed to load';
-      }
+      console.log(chalk.yellow('   No test steps defined'));
     }
+
+    console.log(chalk.cyan('\n📖 Agent-browser skill documentation is available in results.testInfo.agentBrowserSkill'));
+    console.log(chalk.cyan('💡 AI should use this documentation to generate and execute agent-browser commands'));
+
+    // 注意：这里我们返回了测试信息，但没有实际执行测试步骤
+    // 实际的测试执行应该由调用方（AI）来完成
+    // AI会：
+    // 1. 读取 feature.steps
+    // 2. 理解每个步骤的语义
+    // 3. 根据 agentBrowserSkill 文档生成 agent-browser 命令
+    // 4. 执行这些命令
+    // 5. 验证结果
+
+    results.passed = null; // null 表示需要AI来执行和判断
+    results.message = 'Browser opened. AI should execute test steps using agent-browser commands.';
 
   } catch (error) {
     results.passed = false;
     results.error = error.message;
     console.log(chalk.red(`   ❌ Error: ${error.message}`));
-  } finally {
-    // 关闭浏览器
-    runAgentBrowserCommand('close', { silent: true });
   }
+
+  // 注意：不在这里关闭浏览器，让AI完成测试后再关闭
+  // runAgentBrowserCommand('close', { silent: true });
 
   return results;
 }
 
 /**
- * 执行单个测试步骤
+ * 关闭浏览器
  */
-async function executeStep(feature, step, baseUrl) {
-  const result = { passed: false, error: null };
-  const stepLower = step.toLowerCase();
-
-  try {
-    // 导航步骤
-    if (stepLower.includes('打开') || stepLower.includes('进入') || stepLower.includes('访问')) {
-      const target = extractTarget(step);
-      const url = target.startsWith('http') ? target : `${baseUrl}${target}`;
-
-      const navResult = runAgentBrowserCommand(`open ${url}`, { timeout: 10000 });
-      result.passed = navResult.success;
-      if (!result.passed) {
-        result.error = navResult.error;
-      }
-    }
-
-    // 点击步骤
-    else if (stepLower.includes('点击')) {
-      const target = extractTarget(step);
-
-      // 尝试多种选择器策略
-      const clickStrategies = [
-        `find role button click --name "${target}"`,  // 按钮角色
-        `find text "${target}" click`,                // 文本匹配
-        `click "text=${target}"`                      // Playwright 文本选择器
-      ];
-
-      for (const strategy of clickStrategies) {
-        const clickResult = runAgentBrowserCommand(strategy, { timeout: 5000 });
-        if (clickResult.success) {
-          result.passed = true;
-          break;
-        }
-      }
-
-      if (!result.passed) {
-        result.error = `Could not click: "${target}"`;
-      }
-    }
-
-    // 输入步骤
-    else if (stepLower.includes('输入') || stepLower.includes('填写')) {
-      // 检测组合输入步骤（如 "输入学号和密码"）
-      if (stepLower.includes('学号') && stepLower.includes('密码')) {
-        // 填写学号
-        const idResult = runAgentBrowserCommand('find placeholder 学号 fill 2021001', { timeout: 5000 });
-        if (idResult.success) {
-          await new Promise(resolve => setTimeout(resolve, 300));
-          // 填写密码
-          const pwResult = runAgentBrowserCommand('find placeholder 密码 fill 123456', { timeout: 5000 });
-          result.passed = pwResult.success;
-        }
-        if (!result.passed) {
-          result.error = 'Failed to fill login credentials';
-        }
-      } else {
-        const { field, value } = extractInput(step, feature);
-
-        // 使用 find placeholder 命令（更可靠）
-        const fillResult = runAgentBrowserCommand(`find placeholder ${field} fill ${value}`, { timeout: 5000 });
-        result.passed = fillResult.success;
-
-        if (!result.passed) {
-          // 回退到普通选择器
-          const fallbackResult = runAgentBrowserCommand(`fill "[placeholder*=\\"${field}\\"]" "${value}"`, { timeout: 5000 });
-          result.passed = fallbackResult.success;
-        }
-
-        if (!result.passed) {
-          result.error = `Could not fill field: "${field}"`;
-        }
-      }
-    }
-
-    // 验证步骤
-    else if (stepLower.includes('验证') || stepLower.includes('检查') || stepLower.includes('确认')) {
-      // 等待页面跳转/加载完成
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      // 提取验证目标（不转换成路径，保留原始文本）
-      const target = step
-        .replace(/^(验证|检查|确认)\s*/i, '')
-        .replace(/["「」『』]/g, '')
-        .trim();
-
-      // 获取快照检查内容
-      const snapshot = await getSnapshot();
-      if (snapshot && snapshot.data) {
-        const snapshotText = JSON.stringify(snapshot.data);
-        result.passed = snapshotText.includes(target);
-        if (!result.passed) {
-          // 也检查页面文本
-          const textResult = runAgentBrowserCommand('get text body', { silent: true, timeout: 5000 });
-          if (textResult.success && textResult.output) {
-            result.passed = textResult.output.includes(target);
-          }
-        }
-      }
-
-      // 也检查当前URL
-      if (!result.passed) {
-        const currentUrl = runAgentBrowserCommand('url', { silent: true, timeout: 5000 });
-        if (currentUrl.success && currentUrl.output) {
-          // 将中文名称转换为路径检查
-          const routes = {
-            '课程列表': '/courses',
-            '登录页': '/login',
-            '课程表': '/schedule',
-            '个人中心': '/profile',
-            '已选课程': '/selected'
-          };
-          const pathToCheck = routes[target] || target;
-          result.passed = currentUrl.output.includes(pathToCheck);
-        }
-      }
-
-      if (!result.passed) {
-        result.error = `Could not find: "${target}"`;
-      }
-    }
-
-    // 登录特殊处理
-    else if (stepLower.includes('登录')) {
-      // 填写学号
-      const idResult = runAgentBrowserCommand('find placeholder 学号 fill 2021001', { timeout: 5000 });
-      if (idResult.success) {
-        await new Promise(resolve => setTimeout(resolve, 300));
-
-        // 填写密码
-        const pwResult = runAgentBrowserCommand('find placeholder 密码 fill 123456', { timeout: 5000 });
-        if (pwResult.success) {
-          await new Promise(resolve => setTimeout(resolve, 300));
-
-          // 点击登录按钮（使用 role 选择器避免歧义）
-          const loginResult = runAgentBrowserCommand('find role button click --name 登录', { timeout: 5000 });
-          result.passed = loginResult.success;
-        }
-      }
-
-      if (!result.passed) {
-        result.error = 'Login step failed';
-      }
-    }
-
-    // 等待步骤
-    else if (stepLower.includes('等待')) {
-      const msMatch = step.match(/(\d+)/);
-      const ms = msMatch ? parseInt(msMatch[1]) : 2000;
-      await new Promise(resolve => setTimeout(resolve, ms));
-      result.passed = true;
-    }
-
-    // 默认
-    else {
-      // 假设通过
-      result.passed = true;
-    }
-
-  } catch (error) {
-    result.error = error.message;
-  }
-
-  return result;
+export function closeBrowser() {
+  runAgentBrowserCommand('close', { silent: true });
 }
 
 /**
- * 从步骤中提取目标
+ * 执行单个 agent-browser 命令（供AI调用）
  */
-function extractTarget(step) {
-  return step
-    .replace(/^(打开|进入|访问|点击|验证|检查|确认|选择|等待)\s*/i, '')
-    .replace(/^(登录页|课程列表|课程表|个人中心|已选课程)/, (match) => {
-      const routes = {
-        '登录页': '/login',
-        '课程列表': '/courses',
-        '课程表': '/schedule',
-        '个人中心': '/profile',
-        '已选课程': '/selected'
-      };
-      return routes[match] || match;
-    })
-    .replace(/["「」『』]/g, '')
-    .trim();
+export function execAgentBrowser(args, options = {}) {
+  return runAgentBrowserCommand(args, options);
 }
 
 /**
- * 从步骤中提取输入信息
+ * 获取当前页面URL
  */
-function extractInput(step, feature) {
-  const patterns = [
-    /输入\s*(\S+)\s+(\S+)/,
-    /填写\s*(\S+)\s+(\S+)/,
-    /在\s*(\S+)\s*中输入\s*(\S+)/
-  ];
-
-  for (const pattern of patterns) {
-    const match = step.match(pattern);
-    if (match) {
-      return { field: match[1], value: match[2] };
-    }
-  }
-
-  if (feature.testData) {
-    return feature.testData;
-  }
-
-  return { field: 'input', value: 'test' };
+export async function getCurrentUrl() {
+  const result = runAgentBrowserCommand('url', { silent: true, timeout: 5000 });
+  return result.success ? result.output.trim() : null;
 }
 
 /**
- * 在快照中查找输入框引用
+ * 获取页面文本内容
  */
-function findInputRef(refs, fieldName) {
-  const fieldLower = fieldName.toLowerCase();
+export async function getPageText() {
+  const result = runAgentBrowserCommand('get text body', { silent: true, timeout: 5000 });
+  return result.success ? result.output : null;
+}
 
-  for (const [ref, info] of Object.entries(refs)) {
-    if (info.role === 'textbox' || info.role === 'searchbox') {
-      const name = (info.name || '').toLowerCase();
-      if (name.includes(fieldLower) || fieldLower.includes(name)) {
-        return ref;
-      }
-    }
-  }
+/**
+ * 检查页面是否包含指定文本
+ */
+export async function pageContains(text) {
+  const pageText = await getPageText();
+  if (!pageText) return false;
 
-  return null;
+  // 也检查快照
+  const snapshot = await getSnapshot();
+  const snapshotText = snapshot ? JSON.stringify(snapshot) : '';
+
+  return pageText.includes(text) || snapshotText.includes(text);
+}
+
+/**
+ * 截图
+ */
+export async function takeScreenshot(filePath) {
+  const result = runAgentBrowserCommand(`screenshot ${filePath}`, { timeout: 10000 });
+  return result.success;
+}
+
+/**
+ * 等待指定毫秒
+ */
+export function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
@@ -457,21 +310,26 @@ export async function runAllTests(features, options = {}) {
       const result = await runFeatureTest(feature, options);
       results.push(result);
 
-      if (result.passed) {
+      if (result.passed === true) {
         passed++;
-      } else {
+      } else if (result.passed === false) {
         failed++;
       }
+      // result.passed === null 表示需要AI执行
 
       console.log();
     }
   }
+
+  // 关闭浏览器
+  closeBrowser();
 
   // 汇总
   console.log(chalk.gray('='.repeat(50)));
   console.log(chalk.bold('\n📊 Test Results Summary\n'));
   console.log(`   ${chalk.green('✅ Passed:')} ${passed}`);
   console.log(`   ${chalk.red('❌ Failed:')} ${failed}`);
+  console.log(`   ${chalk.blue('📋 Need AI execution:')} ${results.filter(r => r.passed === null).length}`);
   console.log(`   ${chalk.blue('📋 Total:')} ${passed + failed}`);
   console.log();
 
@@ -491,14 +349,17 @@ export async function verifyFeatureE2E(feature, options = {}) {
 
   const result = await runFeatureTest(feature, options);
 
-  if (result.passed) {
+  if (result.passed === true) {
     console.log(chalk.green(`\n✅ Feature ${feature.id} verified successfully!`));
     return { verified: true, result };
-  } else {
+  } else if (result.passed === false) {
     console.log(chalk.red(`\n❌ Feature ${feature.id} verification failed!`));
     if (result.error) {
       console.log(chalk.red(`   Error: ${result.error}`));
     }
     return { verified: false, result };
+  } else {
+    console.log(chalk.yellow(`\n⏳ Feature ${feature.id} needs AI to execute test steps`));
+    return { verified: null, result, message: 'AI should execute test steps' };
   }
 }
