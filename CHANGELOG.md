@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-02-14
+
+### Changed
+- **BREAKING**: Rewrite source code in TypeScript
+- Switch from npm to pnpm for package management
+- Build output now in `dist/` directory (ESM + CJS)
+- CLI entry changed from `bin/lra.js` to `dist/cli.mjs`
+
+### Added
+- TypeScript type definitions (`dist/index.d.ts`)
+- GitHub Actions CI/CD workflows
+  - `ci.yml`: Build, test, and audit on push/PR
+  - `publish.yml`: Automated publishing with Provenance
+- npm Provenance support for supply chain security
+- Export types for programmatic usage
+
+### Removed
+- `test` command (E2E testing should be done by AI using browser automation)
+- `verify` command (same reason as above)
+- `ui-review` command (UI review should be done by AI directly)
+- `e2e.js` module (framework should be business-agnostic)
+- `skills/` directory (moved to project-specific configuration)
+- `templates/` directory
+
+### Fixed
+- Security vulnerabilities in dependencies
+- Updated all dependencies to latest versions:
+  - commander: 12.1.0 → 14.0.3
+  - conf: 12.0.0 → 15.1.0
+  - ora: 8.2.0 → 9.3.0
+
+### Security
+- No known vulnerabilities (verified with `pnpm audit`)
+- npm Provenance enabled for verifiable package authenticity
+
 ## [1.0.0] - 2024-01-15
 
 ### Added
@@ -28,4 +63,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git integration with automatic commits
 - Claude Code integration via `.claude/CLAUDE.md`
 
+[1.1.0]: https://github.com/dimple-smile/long-running-agent/releases/tag/v1.1.0
 [1.0.0]: https://github.com/dimple-smile/long-running-agent/releases/tag/v1.0.0
