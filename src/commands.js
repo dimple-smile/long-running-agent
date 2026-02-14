@@ -512,7 +512,7 @@ export async function runTest(featureId, options) {
 
     const results = await runAllTests(completedFeatures, {
       baseUrl,
-      headless: options.headless !== false
+      headless: options.headless === true
     });
 
     // 更新功能状态
@@ -538,7 +538,7 @@ export async function runTest(featureId, options) {
 
     const result = await runFeatureTest(feature, {
       baseUrl,
-      headless: options.headless !== false
+      headless: options.headless === true
     });
 
     // 更新功能状态
@@ -597,7 +597,7 @@ export async function verifyFeature(featureId, options) {
   // 运行测试
   const result = await runFeatureTest(feature, {
     baseUrl,
-    headless: options.headless !== false
+    headless: options.headless === true
   });
 
   if (result.passed) {

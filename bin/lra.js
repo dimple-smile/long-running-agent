@@ -99,10 +99,10 @@ program
 // test - 运行 E2E 测试
 program
   .command('test [feature-id]')
-  .description('Run E2E tests using Playwright')
+  .description('Run E2E tests using agent-browser')
   .option('-a, --all', 'Test all completed features')
   .option('-b, --base-url <url>', 'Base URL for testing', 'http://localhost:3000')
-  .option('--no-headless', 'Run browser in visible mode')
+  .option('--headless', 'Run browser in headless mode (no visible window)')
   .action(async (featureId, options) => {
     const passed = await runTest(featureId, options);
     process.exit(passed ? 0 : 1);
@@ -113,7 +113,7 @@ program
   .command('verify <feature-id>')
   .description('Verify a feature with E2E test and mark as completed if passed')
   .option('-b, --base-url <url>', 'Base URL for testing', 'http://localhost:3000')
-  .option('--no-headless', 'Run browser in visible mode')
+  .option('--headless', 'Run browser in headless mode (no visible window)')
   .option('-n, --notes <notes>', 'Notes about the completion')
   .action(async (featureId, options) => {
     const passed = await verifyFeature(featureId, options);

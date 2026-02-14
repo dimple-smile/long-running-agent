@@ -90,7 +90,8 @@ async function getSnapshot() {
  */
 export async function runFeatureTest(feature, options = {}) {
   const baseUrl = options.baseUrl || 'http://localhost:3000';
-  const headless = options.headless !== false;
+  // 默认使用有界面模式（headed），这样用户可以看到浏览器操作
+  const headless = options.headless === true;
 
   console.log(chalk.bold(`\n🧪 Testing: ${chalk.cyan(feature.id)} - ${feature.description}`));
   console.log(chalk.gray(`   Base URL: ${baseUrl}`));
