@@ -6,9 +6,19 @@ import fs from 'fs/promises';
 import path from 'path';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
-import chalk from 'chalk';
-import ora from 'ora';
+import pc from 'picocolors';
+import { createSpinner } from 'nanospinner';
 import Conf from 'conf';
+import {
+  updateMetadata,
+  getNextPendingFeature,
+  generateFeatureId,
+  generateProjectId,
+  filterFeatures,
+  createFeature,
+  createFeaturesData,
+  markFeatureComplete
+} from './utils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -130,39 +140,6 @@ async function writeFeatures(data: FeaturesData): Promise<void> {
 }
 
 /**
- * 更新元数据
- */
-function updateMetadata(features: Feature[]): FeaturesData['metadata'] {
-  const total = features.length;
-  const completed = features.filter(f => f.passes).length;
-
-  const byPriority: Record<string, { total: number; completed: number }> = {};
-  const byCategory: Record<string, { total: number; completed: number }> = {};
-
-  for (const f of features) {
-    // 按优先级
-    const p = f.priority || 'medium';
-    byPriority[p] = byPriority[p] || { total: 0, completed: 0 };
-    byPriority[p].total++;
-    if (f.passes) byPriority[p].completed++;
-
-    // 按类别
-    const c = f.category || 'functional';
-    byCategory[c] = byCategory[c] || { total: 0, completed: 0 };
-    byCategory[c].total++;
-    if (f.passes) byCategory[c].completed++;
-  }
-
-  return {
-    total_features: total,
-    completed_features: completed,
-    completion_percentage: total > 0 ? Math.round(completed / total * 100 * 100) / 100 : 0,
-    by_priority: byPriority,
-    by_category: byCategory
-  };
-}
-
-/**
  * 初始化项目
  */
 export async function initProject(name: string | undefined, options: InitOptions): Promise<void> {
@@ -170,7 +147,7 @@ export async function initProject(name: string | undefined, options: InitOptions
   const projectType = options.type;
   const projectName = name || path.basename(path.resolve(targetDir));
 
-  const spinner = ora('Initializing project...').start();
+  const spinner = createSpinner('Initializing project...').start();
 
   try {
     // 创建目录结构
@@ -274,24 +251,24 @@ _暂无_
       // Git 可能已初始化
     }
 
-    spinner.succeed('Project initialized!');
+    spinner.success('Project initialized!');
 
     console.log();
-    console.log(chalk.bold('📁 Created files:'));
+    console.log(pc.bold('📁 Created files:'));
     console.log(`   ${AGENT_DIR}/features.json  - Feature list`);
     console.log(`   ${AGENT_DIR}/progress.md    - Progress tracking`);
     console.log(`   .claude/CLAUDE.md  - Claude Code instructions`);
     console.log(`   init.sh            - Startup script`);
     console.log(`   app_spec.txt       - Application specification`);
     console.log();
-    console.log(chalk.bold('📝 Next steps:'));
+    console.log(pc.bold('📝 Next steps:'));
     console.log('   1. Edit app_spec.txt to define your application');
     console.log('   2. Add features: npx @dimples/lra add "feature description"');
     console.log('   3. Check status: npx @dimples/lra status');
 
   } catch (error) {
-    spinner.fail('Failed to initialize project');
-    console.error(chalk.red((error as Error).message));
+    spinner.error('Failed to initialize project');
+    console.error(pc.red((error as Error).message));
     process.exit(1);
   }
 }
@@ -301,14 +278,14 @@ _暂无_
  */
 export async function showStatus(options: StatusOptions): Promise<void> {
   if (!await checkProject()) {
-    console.log(chalk.red('❌ Not an LRA project'));
+    console.log(pc.red('❌ Not an LRA project'));
     console.log('   Run: npx @dimples/lra init');
     process.exit(1);
   }
 
   const data = await readFeatures();
   if (!data) {
-    console.log(chalk.red('❌ Cannot read features.json'));
+    console.log(pc.red('❌ Cannot read features.json'));
     process.exit(1);
   }
 
@@ -327,25 +304,25 @@ export async function showStatus(options: StatusOptions): Promise<void> {
 
   // 人类可读输出
   console.log();
-  console.log(chalk.bold(`📊 ${data.project_name} - 项目状态`));
+  console.log(pc.bold(`📊 ${data.project_name} - 项目状态`));
   console.log('═'.repeat(40));
   console.log(`├── 进度: ${data.metadata.completed_features}/${data.metadata.total_features} (${data.metadata.completion_percentage}%)`);
 
   const next = getNextPendingFeature(data.features);
   if (next) {
-    console.log(`├── 下一个: ${chalk.cyan(next.id)} ${next.description}`);
+    console.log(`├── 下一个: ${pc.cyan(next.id)} ${next.description}`);
   } else {
-    console.log(`├── 下一个: ${chalk.green('全部完成!')}`);
+    console.log(`├── 下一个: ${pc.green('全部完成!')}`);
   }
   console.log('└── 阻塞: 无');
   console.log();
 
   // 按优先级统计
-  console.log(chalk.bold('📋 按优先级:'));
+  console.log(pc.bold('📋 按优先级:'));
   for (const [priority, stats] of Object.entries(data.metadata.by_priority || {})) {
-    const color = priority === 'critical' ? chalk.red :
-                  priority === 'high' ? chalk.yellow :
-                  priority === 'medium' ? chalk.blue : chalk.gray;
+    const color = priority === 'critical' ? pc.red :
+                  priority === 'high' ? pc.yellow :
+                  priority === 'medium' ? pc.blue : pc.gray;
     console.log(`   ${color(priority)}: ${(stats as { total: number; completed: number }).completed}/${(stats as { total: number; completed: number }).total}`);
   }
   console.log();
@@ -356,13 +333,13 @@ export async function showStatus(options: StatusOptions): Promise<void> {
  */
 export async function addFeature(description: string, options: AddOptions): Promise<void> {
   if (!await checkProject()) {
-    console.log(chalk.red('❌ Not an LRA project'));
+    console.log(pc.red('❌ Not an LRA project'));
     process.exit(1);
   }
 
   const data = await readFeatures();
   if (!data) {
-    console.log(chalk.red('❌ Cannot read features.json'));
+    console.log(pc.red('❌ Cannot read features.json'));
     process.exit(1);
   }
 
@@ -385,7 +362,7 @@ export async function addFeature(description: string, options: AddOptions): Prom
   data.features.push(feature);
   await writeFeatures(data);
 
-  console.log(chalk.green(`✅ Added feature [${newId}]: ${description}`));
+  console.log(pc.green(`✅ Added feature [${newId}]: ${description}`));
 }
 
 /**
@@ -393,20 +370,20 @@ export async function addFeature(description: string, options: AddOptions): Prom
  */
 export async function getNextFeature(options: NextOptions): Promise<void> {
   if (!await checkProject()) {
-    console.log(chalk.red('❌ Not an LRA project'));
+    console.log(pc.red('❌ Not an LRA project'));
     process.exit(1);
   }
 
   const data = await readFeatures();
   if (!data) {
-    console.log(chalk.red('❌ Cannot read features.json'));
+    console.log(pc.red('❌ Cannot read features.json'));
     process.exit(1);
   }
 
   const next = getNextPendingFeature(data.features);
 
   if (!next) {
-    console.log(chalk.green('🎉 All features completed!'));
+    console.log(pc.green('🎉 All features completed!'));
     return;
   }
 
@@ -414,7 +391,7 @@ export async function getNextFeature(options: NextOptions): Promise<void> {
     console.log(JSON.stringify(next, null, 2));
   } else {
     console.log();
-    console.log(chalk.bold(`🎯 Next Feature: ${chalk.cyan(next.id)}`));
+    console.log(pc.bold(`🎯 Next Feature: ${pc.cyan(next.id)}`));
     console.log('─'.repeat(40));
     console.log(`描述: ${next.description}`);
     console.log(`优先级: ${next.priority}`);
@@ -427,40 +404,25 @@ export async function getNextFeature(options: NextOptions): Promise<void> {
   }
 }
 
-function getNextPendingFeature(features: Feature[]): Feature | null {
-  const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
-  const pending = features.filter(f => !f.passes);
-  if (pending.length === 0) return null;
-
-  // Sort by priority (critical first, then high, medium, low)
-  pending.sort((a, b) => {
-    const pa = priorityOrder[a.priority] ?? 2;
-    const pb = priorityOrder[b.priority] ?? 2;
-    return pa - pb;
-  });
-
-  return pending[0];
-}
-
 /**
  * 标记完成
  */
 export async function markDone(featureId: string, options: DoneOptions): Promise<void> {
   if (!await checkProject()) {
-    console.log(chalk.red('❌ Not an LRA project'));
+    console.log(pc.red('❌ Not an LRA project'));
     process.exit(1);
   }
 
   const data = await readFeatures();
   if (!data) {
-    console.log(chalk.red('❌ Cannot read features.json'));
+    console.log(pc.red('❌ Cannot read features.json'));
     process.exit(1);
   }
 
   const feature = data.features.find(f => f.id === featureId);
 
   if (!feature) {
-    console.log(chalk.red(`❌ Feature ${featureId} not found`));
+    console.log(pc.red(`❌ Feature ${featureId} not found`));
     process.exit(1);
   }
 
@@ -474,7 +436,7 @@ export async function markDone(featureId: string, options: DoneOptions): Promise
 
   await writeFeatures(data);
 
-  console.log(chalk.green(`✅ Feature ${featureId} marked as completed`));
+  console.log(pc.green(`✅ Feature ${featureId} marked as completed`));
   console.log(`📊 Progress: ${data.metadata.completed_features}/${data.metadata.total_features} (${data.metadata.completion_percentage}%)`);
 }
 
@@ -483,7 +445,7 @@ export async function markDone(featureId: string, options: DoneOptions): Promise
  */
 export async function commitProgress(featureId: string | undefined, options: CommitOptions): Promise<void> {
   if (!await checkProject()) {
-    console.log(chalk.red('❌ Not an LRA project'));
+    console.log(pc.red('❌ Not an LRA project'));
     process.exit(1);
   }
 
@@ -491,7 +453,7 @@ export async function commitProgress(featureId: string | undefined, options: Com
   try {
     execSync('git rev-parse --is-inside-work-tree', { stdio: 'pipe' });
   } catch {
-    console.log(chalk.yellow('⚠️  Not a git repository'));
+    console.log(pc.yellow('⚠️  Not a git repository'));
     return;
   }
 
@@ -513,7 +475,7 @@ export async function commitProgress(featureId: string | undefined, options: Com
   try {
     execSync('git add -A', { stdio: 'pipe' });
     execSync(`git commit -m "${message}"`, { stdio: 'pipe' });
-    console.log(chalk.green(`✅ Committed: ${message}`));
+    console.log(pc.green(`✅ Committed: ${message}`));
 
     // 显示进度
     const data = await readFeatures();
@@ -521,7 +483,7 @@ export async function commitProgress(featureId: string | undefined, options: Com
       console.log(`📊 Progress: ${data.metadata.completed_features}/${data.metadata.total_features} (${data.metadata.completion_percentage}%)`);
     }
   } catch {
-    console.log(chalk.yellow('⚠️  Nothing to commit'));
+    console.log(pc.yellow('⚠️  Nothing to commit'));
   }
 }
 
@@ -530,13 +492,13 @@ export async function commitProgress(featureId: string | undefined, options: Com
  */
 export async function listFeatures(options: ListOptions): Promise<void> {
   if (!await checkProject()) {
-    console.log(chalk.red('❌ Not an LRA project'));
+    console.log(pc.red('❌ Not an LRA project'));
     process.exit(1);
   }
 
   const data = await readFeatures();
   if (!data) {
-    console.log(chalk.red('❌ Cannot read features.json'));
+    console.log(pc.red('❌ Cannot read features.json'));
     process.exit(1);
   }
 
@@ -554,15 +516,15 @@ export async function listFeatures(options: ListOptions): Promise<void> {
   }
 
   console.log();
-  console.log(chalk.bold(`📋 Features (${features.length})`));
+  console.log(pc.bold(`📋 Features (${features.length})`));
   console.log('─'.repeat(60));
 
   for (const f of features) {
-    const status = f.passes ? chalk.green('✅') : chalk.yellow('⏳');
-    const priority = f.priority === 'critical' ? chalk.red('[CRIT]') :
-                     f.priority === 'high' ? chalk.yellow('[HIGH]') :
-                     f.priority === 'medium' ? chalk.blue('[MED]') : chalk.gray('[LOW]');
-    console.log(`${status} ${chalk.cyan(f.id)} ${priority} ${f.description}`);
+    const status = f.passes ? pc.green('✅') : pc.yellow('⏳');
+    const priority = f.priority === 'critical' ? pc.red('[CRIT]') :
+                     f.priority === 'high' ? pc.yellow('[HIGH]') :
+                     f.priority === 'medium' ? pc.blue('[MED]') : pc.gray('[LOW]');
+    console.log(`${status} ${pc.cyan(f.id)} ${priority} ${f.description}`);
   }
   console.log();
 }
@@ -572,20 +534,20 @@ export async function listFeatures(options: ListOptions): Promise<void> {
  */
 export async function exportProject(options: ExportOptions): Promise<void> {
   if (!await checkProject()) {
-    console.log(chalk.red('❌ Not an LRA project'));
+    console.log(pc.red('❌ Not an LRA project'));
     process.exit(1);
   }
 
   const data = await readFeatures();
   if (!data) {
-    console.log(chalk.red('❌ Cannot read features.json'));
+    console.log(pc.red('❌ Cannot read features.json'));
     process.exit(1);
   }
 
   const outputFile = options.output || `export-${Date.now()}.json`;
 
   await fs.writeFile(outputFile, JSON.stringify(data, null, 2));
-  console.log(chalk.green(`✅ Exported to ${outputFile}`));
+  console.log(pc.green(`✅ Exported to ${outputFile}`));
 }
 
 /**

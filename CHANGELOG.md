@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-02-14
+
+### Changed
+- Replace `chalk` with `picocolors` (14x smaller, 2x faster)
+- Replace `ora` with `nanospinner` (lighter spinner)
+- Extract pure functions to `utils.ts` module for better testability
+
+### Added
+- Vitest testing framework with 45 unit tests
+- Test coverage threshold (80% for utils module)
+- `src/utils.ts` - pure utility functions
+- Test scripts: `test`, `test:watch`, `test:coverage`
+
+### Removed
+- GitHub Actions workflows (simplified for manual publishing)
+
 ## [1.1.0] - 2025-02-14
 
 ### Changed
@@ -15,9 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - TypeScript type definitions (`dist/index.d.ts`)
-- GitHub Actions CI/CD workflows
-  - `ci.yml`: Build, test, and audit on push/PR
-  - `publish.yml`: Automated publishing with Provenance
 - npm Provenance support for supply chain security
 - Export types for programmatic usage
 
@@ -31,14 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Security vulnerabilities in dependencies
-- Updated all dependencies to latest versions:
-  - commander: 12.1.0 → 14.0.3
-  - conf: 12.0.0 → 15.1.0
-  - ora: 8.2.0 → 9.3.0
+- Updated all dependencies to latest versions
 
 ### Security
 - No known vulnerabilities (verified with `pnpm audit`)
-- npm Provenance enabled for verifiable package authenticity
 
 ## [1.0.0] - 2024-01-15
 
@@ -63,5 +72,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git integration with automatic commits
 - Claude Code integration via `.claude/CLAUDE.md`
 
+[1.2.0]: https://github.com/dimple-smile/long-running-agent/releases/tag/v1.2.0
 [1.1.0]: https://github.com/dimple-smile/long-running-agent/releases/tag/v1.1.0
 [1.0.0]: https://github.com/dimple-smile/long-running-agent/releases/tag/v1.0.0
